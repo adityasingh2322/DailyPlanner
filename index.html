@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily Planner with Chatbot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #task-list input[type="checkbox"] {
+  transform: scale(1.2);
+  accent-color: #3498db;
+  cursor: pointer;
+}
+
+  </style>
+</head>
+<body class="bg-gradient-to-r from-pink-700 to-blue-500 p-4">
+  <h1 class="text-2xl font-bold mb-1 text-center">🗓️ Daily Planner</h1>
+  <p id="dateTime" class="text-center text-gray-600 mb-4"></p>
+
+  <div class="flex flex-col md:flex-row gap-4">
+    <!-- Calendar Section -->
+    <div class="bg-white rounded shadow p-4 w-full md:w-1/3">
+      <h2 class="text-xl font-semibold mb-2">📅 Calendar</h2>
+      <input type="date" id="calendarDate" class="w-full p-2 border rounded mb-4" onchange="loadTasksForDate()" />
+
+      <h3 class="font-medium mb-1">📝 Tasks for Selected Date</h3>
+      <div class="flex gap-2 mb-2">
+        <input type="text" id="calendarTaskInput" class="border rounded p-2 w-full" placeholder="Enter a task" />
+        <button onclick="addCalendarTask()" class="bg-blue-500 text-white px-3 py-2 rounded">Add</button>
+      </div>
+      <ul id="calendarTaskList" class="text-sm"></ul>
+    </div>
+
+    <div class="flex flex-col gap-4 w-full md:w-2/3">
+      <!-- Task Section -->
+      <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xl font-semibold mb-2">📝 Tasks</h2>
+        <div class="flex gap-2 mb-2">
+          <input type="text" id="taskInput" class="border rounded p-2 w-full" placeholder="Enter a task" />
+          <button onclick="addTask()" class="bg-blue-500 text-white px-4 py-2 rounded">Add</button>
+        </div>
+        <ul id="taskList"></ul>
+      </div>
+
+      <!-- Chatbot Section -->
+      <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xl font-semibold mb-2">💬 Chatbot</h2>
+        <div id="chatMessages" class="h-48 overflow-y-auto bg-gray-50 p-2 rounded mb-2 text-sm"></div>
+        <div class="flex gap-2">
+          <input type="text" id="chatInput" class="border rounded p-2 w-full" placeholder="Ask me something..." />
+          <button onclick="sendMessage()" class="bg-green-500 text-white px-4 py-2 rounded">Send</button>
+        </div>
+      </div>
+
+      <!-- Quote Section -->
+      <div class="bg-white rounded shadow p-4">
+        <h2 class="text-xl font-semibold mb-2">🌟 Quote of the Day</h2>
+        <p id="quote" class="italic text-gray-700">Loading...</p>
+      </div>
+    </div>
+  </div>
+<script>
+    const taskInput = document.getElementById("taskInput");
+    const taskList = document.getElementById("taskList");
+    const chatMessages = document.getElementById("chatMessages");
+    const chatInput = document.getElementById("chatInput");
+    const quoteElement = document.getElementById("quote");
+    const dateTimeElement = document.getElementById("dateTime");
+
+    const calendarDate = document.getElementById("calendarDate");
+    const calendarTaskInput = document.getElementById("calendarTaskInput");
+    const calendarTaskList = document.getElementById("calendarTaskList");
+
+    const messages = [
+      { sender: 'bot', text: 'Hello! Need any advice for your day? You can schedule tasks with "Schedule a meeting at 2 PM" or ask me anything!' }
+    ];
+
+    const calendarTasks = {};
+
+    // Replace with your actual Gemini API key
+    const GEMINI_API_KEY = 'AIzaSyBiMGqp3wJu2yq6j8iaHSEjjLjMDOr7Krk';
+    // Replace with actual Gemini API endpoint
+    const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent';// Placeholder URL
+
+    function updateDateTime() {
+      const now = new Date();
+      const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      const formattedDate = now.toLocaleDateString(undefined, options);
+      const formattedTime = now.toLocaleTimeString();
+      dateTimeElement.textContent = `${formattedDate} - ${formattedTime}`;
+    }
+
+    function addTask(taskText) {
+      const li = document.createElement('li');
+      li.className = "flex justify-between items-center bg-white rounded px-3 py-2 mb-2 shadow text-sm";
+      li.innerHTML = `
+        <span>${taskText}</span>
+        <input type="checkbox" class="ml-2" onchange="this.previousElementSibling.classList.toggle('line-through')">
+      `;
+      taskList.appendChild(li);
+    }
+
+    function addCalendarTaskForDate(date, taskText) {
+      if (!calendarTasks[date]) {
+        calendarTasks[date] = [];
+      }
+      calendarTasks[date].push(taskText);
+      if (date === calendarDate.value) {
+        loadTasksForDate();
+      }
+    }
+
+    function displayMessages() {
+      chatMessages.innerHTML = '';
+      messages.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = msg.sender === 'bot' ? 'text-blue-600 mb-1' : 'text-green-600 mb-1';
+        div.innerHTML = `<strong>${msg.sender === 'bot' ? 'Bot' : 'You'}:</strong> ${msg.text}`;
+        chatMessages.appendChild(div);
+      });
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function getGeminiResponse(query) {
+  try {
+    const response = await fetch(GEMINI_API_URL + `?key=${GEMINI_API_KEY}`, { // Append API key or keep in headers
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // 'Authorization': `Bearer ${GEMINI_API_KEY}` // Use this if not appending to URL
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: query }]
+        }],
+        generationConfig: {
+          maxOutputTokens: 100,
+          temperature: 0.7
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Gemini API error:', errorData);
+      throw new Error(`API request failed with status ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    // Adjust this based on the actual Gemini API response structure
+    // The response will likely have a 'candidates' array
+    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts.length > 0) {
+      return data.candidates[0].content.parts[0].text;
+    } else {
+      return 'Sorry, I got a response but couldn\'t parse it.';
+    }
+  } catch (error) {
+    console.error('Gemini API error:', error);
+    return `Sorry, I couldn't connect to the Gemini API: ${error.message}. Try again later!`;
+  }
+}
+
+    async function sendMessage() {
+      const text = chatInput.value.trim();
+      if (text) {
+        messages.push({ sender: 'user', text });
+        chatInput.value = '';
+        let botReply = '';
+
+        const scheduleMatch = text.match(/(?:schedule|sched|add)\s+(.+?)\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (scheduleMatch) {
+          const taskDescription = scheduleMatch[1].trim();
+          let hour = parseInt(scheduleMatch[2]);
+          const minutes = scheduleMatch[3] || '00';
+          const period = (scheduleMatch[4] || '').toLowerCase();
+
+          if (period === 'pm' && hour < 12) {
+            hour += 12;
+          } else if (period === 'am' && hour === 12) {
+            hour = 0;
+          }
+
+          const timeString = `${hour.toString().padStart(2, '0')}:${minutes}`;
+          const taskText = `${taskDescription} at ${timeString}${period ? ' ' + period.toUpperCase() : ''}`;
+          
+          const selectedDate = calendarDate.value || new Date().toISOString().split('T')[0];
+          
+          addCalendarTaskForDate(selectedDate, taskText);
+          botReply = `Scheduled: "${taskText}" for ${new Date(selectedDate).toLocaleDateString()}. Check your calendar!`;
+        } 
+        else if (text.toLowerCase().includes('focus')) {
+          botReply = 'Try the Pomodoro technique – it works wonders!';
+        } 
+        else if (text.toLowerCase().includes('break')) {
+          botReply = 'Take a 5-minute walk. It refreshes your mind!';
+        } 
+        else if (text.toLowerCase().includes('motivate')) {
+          botReply = 'Remember why you started. Keep going!';
+        } 
+        else {
+          // Use Gemini API for all other queries
+          botReply = await getGeminiResponse(text);
+        }
+
+        setTimeout(() => {
+          messages.push({ sender: 'bot', text: botReply });
+          displayMessages();
+        }, 500);
+
+        displayMessages();
+      }
+    }
+
+    function fetchQuote() {
+      fetch('https://api.quotable.io/random')
+        .then(res => res.json())
+        .then(data => {
+          quoteElement.textContent = `"${data.content}"`;
+        })
+        .catch(() => {
+          quoteElement.textContent = 'Could not load quote.';
+        });
+    }
+
+    function addCalendarTask() {
+      const task = calendarTaskInput.value.trim();
+      const selectedDate = calendarDate.value;
+
+      if (task && selectedDate) {
+        if (!calendarTasks[selectedDate]) {
+          calendarTasks[selectedDate] = [];
+        }
+        calendarTasks[selectedDate].push(task);
+        calendarTaskInput.value = '';
+        loadTasksForDate();
+      }
+    }
+
+    function loadTasksForDate() {
+      const selectedDate = calendarDate.value;
+      calendarTaskList.innerHTML = "";
+
+      if (calendarTasks[selectedDate]) {
+        calendarTasks[selectedDate].forEach((task) => {
+          const li = document.createElement("li");
+          li.className = "flex justify-between items-center bg-gray-50 rounded px-3 py-2 mb-2 shadow";
+          li.innerHTML = `
+            <span>${task}</span>
+            <input type="checkbox" class="ml-2" onchange="this.previousElementSibling.classList.toggle('line-through')">
+          `;
+          calendarTaskList.appendChild(li);
+        });
+      }
+    }
+
+    window.onload = function () {
+      displayMessages();
+      fetchQuote();
+      updateDateTime();
+      setInterval(updateDateTime, 1000);
+    };
+</script>
+</body>
+</html>
